@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Convertidor de Texto a Voz</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f2f2f2;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .container {
+            max-width: 600px;
+            width: 100%;
+            padding: 20px;
+            background-color: #fff;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        h1 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        label, select, textarea, input[type="range"], button {
+            margin-bottom: 10px;
+            display: block;
+        }
+
+        textarea, input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        select, input[type="range"] {
+            width: 100%;
+            padding: 10px;
+            font-size: 16px;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            transition: background-color 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        #audio {
+            width: 100%;
+            margin-top: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Convertidor de Texto a Voz</h1>
+        <form id="textToSpeechForm">
+            <label for="text">Texto:</label><br>
+            <textarea id="text" name="text" rows="4" cols="50"></textarea><br><br>
+
+            <label for="language">Idioma:</label>
+            <select id="language">
+                <option value="es">Español</option>
+                <option value="en">Inglés</option>
+                <!-- Agrega más opciones de idiomas según necesites -->
+            </select><br><br>
+
+            <label for="voice">Voz:</label>
+            <select id="voice">
+                <!-- Las opciones de voces se cargarán dinámicamente con JavaScript -->
+            </select><br><br>
+
+            <label for="speed">Velocidad:</label>
+            <input type="range" id="speed" name="speed" min="0.5" max="2" step="0.1" value="1"><br><br>
+
+            <label for="pitch">Tono:</label>
+            <input type="range" id="pitch" name="pitch" min="0.5" max="2" step="0.1" value="1"><br><br>
+
+            <button type="button" onclick="convertToSpeech()">Convertir a Voz</button>
+            <button type="button" onclick="stopConversion()">Detener</button>
+        </form>
+
+        <!-- Botones para controlar la entrada de voz -->
+        <button id="voiceInputButton" onclick="startContinuousSpeechRecognition()">Iniciar Entrada por Voz</button>
+        <button id="stopVoiceInputButton" onclick="stopContinuousSpeechRecognition()" style="display:none;">Detener Entrada por Voz</button>
+
+        <audio id="audio" controls></audio>
+    </div>
+
+    <script>
+        const synth = window.speechSynthesis;
+        let recognition = null;
+        let utterance = new SpeechSynthesisUtterance();
+        const audioElement = document.getElementById('audio');
+        const languageElement = document.getElementById('language');
+        const voiceElement = document.getElementById('voice');
+        const speedElement = document.getElementById('speed');
+        const pitchElement = document.getElementById('pitch');
+        const textElement = document.getElementById('text');
+
+        let finalTranscript = '';
+
+        // Función para cargar voces disponibles
+        function populateVoices() {
+            const voices = synth.getVoices();
+            voiceElement.innerHTML = '';
+
+            voices.forEach(voice => {
+                const option = document.createElement('option');
+                option.value = voice.name;
+                option.textContent = `${voice.name} (${voice.lang})`;
+                option.setAttribute('data-lang', voice.lang);
+                option.setAttribute('data-name', voice.name);
+                option.setAttribute('data-uri', voice.voiceURI);
+                voiceElement.appendChild(option);
+            });
+        }
+
+        if (speechSynthesis.onvoiceschanged !== undefined) {
+            speechSynthesis.onvoiceschanged = populateVoices;
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            populateVoices();
+        });
+
+        // Función para iniciar el reconocimiento de voz continuo
+        function startContinuousSpeechRecognition() {
+            if ('webkitSpeechRecognition' in window) {
+                if (!recognition) {
+                    recognition = new webkitSpeechRecognition();
+                    recognition.lang = languageElement.value;
+                    recognition.continuous = true;
+                    recognition.interimResults = true; // Permite resultados intermedios
+
+                    recognition.onstart = () => {
+                        console.log('Reconocimiento de voz iniciado.');
+                        document.getElementById('voiceInputButton').style.display = 'none';
+                        document.getElementById('stopVoiceInputButton').style.display = 'block';
+                        finalTranscript = ''; // Reiniciar el texto transcrito final
+                    };
+
+                    recognition.onresult = (event) => {
+                        let interimTranscript = '';
+                        for (let i = event.resultIndex; i < event.results.length; ++i) {
+                            if (event.results[i].isFinal) {
+                                finalTranscript += event.results[i][0].transcript;
+                            } else {
+                                interimTranscript += event.results[i][0].transcript;
+                            }
+                        }
+                        textElement.value = finalTranscript + interimTranscript;
+                    };
+
+                    recognition.onerror = (error) => {
+                        console.error('Error en reconocimiento de voz:', error);
+                    };
+
+                    recognition.onend = () => {
+                        console.log('Reconocimiento de voz finalizado.');
+                        document.getElementById('voiceInputButton').style.display = 'block';
+                        document.getElementById('stopVoiceInputButton').style.display = 'none';
+                    };
+                }
+                recognition.start();
+            } else {
+                alert('Tu navegador no soporta reconocimiento de voz.');
+            }
+        }
+
+        // Función para detener el reconocimiento de voz
+        function stopContinuousSpeechRecognition() {
+            if (recognition) {
+                recognition.stop();
+            }
+        }
+
+        // Función para convertir texto a voz
+        function convertToSpeech() {
+            const text = textElement.value.trim();
+            if (text === '') {
+                alert('Por favor ingresa texto para convertir a voz.');
+                return;
+            }
+
+            const selectedVoice = voiceElement.selectedOptions[0];
+            utterance.voice = synth.getVoices().find(voice => voice.name === selectedVoice.value);
+            utterance.lang = selectedVoice.getAttribute('data-lang');
+            utterance.rate = speedElement.value;
+            utterance.pitch = pitchElement.value;
+            utterance.text = text;
+
+            synth.cancel();
+            synth.speak(utterance);
+
+            utterance.onstart = () => {
+                console.log('Síntesis de voz iniciada.');
+            };
+
+            utterance.onend = () => {
+                console.log('Síntesis de voz completada.');
+            };
+
+            utterance.onerror = (error) => {
+                console.error('Error en la síntesis de voz:', error);
+            };
+
+            audioElement.src = '';
+            audioElement.pause();
+        }
+
+        // Función para detener la síntesis de voz
+        function stopConversion() {
+            synth.cancel();
+        }
+
+        // Event listener para actualizar el idioma de reconocimiento de voz al cambiar la selección
+        languageElement.addEventListener('change', () => {
+            if (recognition) {
+                recognition.lang = languageElement.value;
+            }
+            populateVoices();
+        });
+    </script>
+</body>
+</html>
